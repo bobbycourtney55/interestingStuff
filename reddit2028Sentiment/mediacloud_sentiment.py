@@ -10,11 +10,9 @@ MEDIACLOUD_API_KEY. `classify` needs Anthropic API credentials.
 
 Only articles whose headline names the candidate are used: Media Cloud's free
 tier returns headlines but not article text, and a headline that names someone
-is what carries a stance toward them. Each candidate-month keeps every such
-article when there are at most --per-month of them. Otherwise it takes an
-equal share from each of SAMPLE_DAYS, because the free tier also can't draw
-random samples. The free tier allows 2 requests a minute, so a full fetch
-takes about an hour and a half.
+is what carries a stance toward them. Every such headline in each month is
+fetched (up to --max-per-month). The free tier allows 2 requests a minute, so
+a full fetch takes about 45 minutes.
 """
 
 import argparse
@@ -38,7 +36,6 @@ CHART = DATA / "mc_pct_positive.png"
 
 US_NATIONAL = 34412234  # Media Cloud "United States - National" collection
 MAX_TEXT = 12000  # characters of article text sent to Claude, when the account can fetch text
-SAMPLE_DAYS = (5, 12, 19, 26)  # days of the month sampled when a month has more than --per-month articles
 
 # Headline must name the candidate. "Harris" alone also hits other Harrises, so a
 # Harris headline counts only when the article text says "Kamala" too.
@@ -83,10 +80,15 @@ def fetch(args):
                 time.sleep(min(2 ** attempt * 30, 300))
         raise RuntimeError("Media Cloud kept failing; rerun fetch to resume")
 
-    def stories_between(query, start, end, n):
-        stories, more = call(mc.story_list, query, start, end, collection_ids=[US_NATIONAL],
-                             expanded=args.full_text, page_size=n)
-        return stories, bool(more)
+    def month_stories(query, start, end):
+        """Every matching story in the month, paging 1,000 at a time, stopping at --max-per-month."""
+        stories, token = [], None
+        while True:
+            page, token = call(mc.story_list, query, start, end, collection_ids=[US_NATIONAL],
+                               expanded=args.full_text, page_size=1000, pagination_token=token)
+            stories += page
+            if not token or len(stories) >= args.max_per_month:
+                return stories[: args.max_per_month], bool(token)
 
     DATA.mkdir(exist_ok=True)
     have = {(r["candidate"], r["month"]) for r in read_jsonl(STORIES)}
@@ -97,13 +99,7 @@ def fetch(args):
                 month = start.strftime("%Y-%m")
                 if (name, month) in have:
                     continue
-                stories, more = stories_between(query, start, end, args.per_month)
-                sampled = more
-                if more:
-                    stories = []
-                    days = [start.replace(day=d) for d in SAMPLE_DAYS if start.replace(day=d) <= end]
-                    for day in days:
-                        stories += stories_between(query, day, day, args.per_month // len(SAMPLE_DAYS))[0]
+                stories, sampled = month_stories(query, start, end)
                 seen, kept = set(), []
                 for s in stories:
                     dup = (s.get("media_name"), (s.get("title") or "").strip().lower())
@@ -127,7 +123,7 @@ def fetch(args):
                     out.write(json_line({"key": f"{name}|none|{month}", "candidate": name, "month": month,
                                          "sampled": False, "empty": True}))
                 out.flush()
-                how = f"sampled {len(kept)} from {len(SAMPLE_DAYS)} days" if sampled else f"all {len(kept)}"
+                how = f"first {len(kept)} (hit --max-per-month)" if sampled else f"all {len(kept)}"
                 print(f"{name} {month}: {how}", flush=True)
 
 
@@ -202,7 +198,7 @@ def report(args):
         if not n:
             continue
         rows.append({
-            "candidate": name, "month": month, "coverage": "sampled days" if sampled.get((name, month)) else "all headlines",
+            "candidate": name, "month": month, "coverage": "capped" if sampled.get((name, month)) else "all headlines",
             "classified": n, "positive": c["positive"], "negative": c["negative"], "neutral": c["neutral"],
             "pct_positive": round(100 * c["positive"] / n, 1),
             "pct_negative": round(100 * c["negative"] / n, 1),
@@ -299,7 +295,8 @@ def main():
     parser.add_argument("--year", type=int, default=dt.date.today().year)
     sub = parser.add_subparsers(dest="cmd", required=True)
     f = sub.add_parser("fetch", help="sample articles from Media Cloud")
-    f.add_argument("--per-month", type=int, default=300, help="max articles per candidate-month (max 1000)")
+    f.add_argument("--max-per-month", type=int, default=3000,
+                   help="stop paging a candidate-month after this many articles (default 3000)")
     f.add_argument("--full-text", action="store_true",
                    help="also fetch article text (needs a Media Cloud account allowed 'expanded' stories)")
     c = sub.add_parser("classify", help="label each article's portrayal of its candidate with Claude")

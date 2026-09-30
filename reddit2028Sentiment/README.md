@@ -52,7 +52,7 @@ python mediacloud_sentiment.py classify                # -> data/mc_stances.json
 python mediacloud_sentiment.py report                  # -> data/mc_monthly.csv, data/mc_pct_positive.png
 ```
 
-- **Sampling:** only articles whose headline names the candidate (`article_title:` queries). A candidate-month keeps every such article up to `--per-month` (default 300); busier months take an equal share from 4 fixed days, because the free Media Cloud tier returns headlines only, allows no random sampling, and allows 2 requests a minute.
+- **Coverage:** only articles whose headline names the candidate (`article_title:` queries), and every such headline in each month (up to `--max-per-month`, default 3000). The free Media Cloud tier returns headlines only and allows 2 requests a minute, so the fetch takes about 45 minutes.
 - **Stance:** Claude reads the headline (plus up to 12,000 characters of text
   with `--full-text`, on accounts allowed to fetch it) and labels how the article portrays that candidate: positive,
   negative, neutral, or not about them. A bad event reported in a dry tone

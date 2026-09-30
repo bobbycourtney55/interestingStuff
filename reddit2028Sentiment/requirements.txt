@@ -1,0 +1,2 @@
+anthropic>=1.10
+requests

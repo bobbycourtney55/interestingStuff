@@ -1,2 +1,4 @@
 anthropic>=1.10
 requests
+mediacloud>=4
+matplotlib

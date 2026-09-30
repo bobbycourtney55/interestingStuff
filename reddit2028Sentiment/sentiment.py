@@ -178,19 +178,15 @@ def schema(names):
     }
 
 
-def classify_post(client, post, names):
-    body = post["selftext"][:6000]
-    prompt = (
-        f"Subreddit: r/{post['subreddit']}\nTitle: {post['title']}\n"
-        f"Link: {post['url']}\nBody:\n{body or '(no body text)'}\n\n"
-        f"Label the stance toward each of: {', '.join(names)}."
-    )
+def label_stances(client, system, prompt, names):
+    """Ask Claude for each name's stance. Returns {name: stance}, or None if the
+    API kept failing (the caller leaves the item for a later rerun)."""
     for attempt in range(5):
         try:
             response = client.beta.messages.create(
                 model=MODEL,
                 max_tokens=2000,
-                system=SYSTEM,
+                system=system,
                 messages=[{"role": "user", "content": prompt}],
                 output_config={"effort": "low", "format": {"type": "json_schema", "schema": schema(names)}},
                 betas=["server-side-fallback-2026-07-01"],
@@ -206,6 +202,16 @@ def classify_post(client, post, names):
     text = next(b.text for b in response.content if b.type == "text")
     got = {s["candidate"]: s["stance"] for s in json.loads(text)["stances"]}
     return {name: got.get(name, "neutral") for name in names}
+
+
+def classify_post(client, post, names):
+    body = post["selftext"][:6000]
+    prompt = (
+        f"Subreddit: r/{post['subreddit']}\nTitle: {post['title']}\n"
+        f"Link: {post['url']}\nBody:\n{body or '(no body text)'}\n\n"
+        f"Label the stance toward each of: {', '.join(names)}."
+    )
+    return label_stances(client, SYSTEM, prompt, names)
 
 
 def classify(args):

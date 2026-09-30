@@ -36,3 +36,32 @@ python sentiment.py report               # -> data/summary.csv
 
 Caveats: Reddit's user base leans young and left, and subreddits differ a lot.
 Break results down by `subreddit` in `stances.jsonl` before generalizing.
+
+## News media: Media Cloud, % positive by month
+
+`mediacloud_sentiment.py` does the same analysis for news articles in Media
+Cloud's "United States - National" collection, month by month for the
+current year.
+
+```sh
+export MEDIACLOUD_API_KEY=...   # search.mediacloud.org -> your profile
+export ANTHROPIC_API_KEY=...
+
+python mediacloud_sentiment.py fetch --per-month 150   # -> data/mc_stories.jsonl
+python mediacloud_sentiment.py classify                # -> data/mc_stances.jsonl (resumable)
+python mediacloud_sentiment.py report                  # -> data/mc_monthly.csv, data/mc_pct_positive.png
+```
+
+- **Sampling:** each candidate-month is a random sample of up to `--per-month`
+  English articles matching the candidate's query. The total number of
+  matching articles is kept in `matching_articles`. At 150 a month, 7
+  candidates over 9 months is about 9,500 articles.
+- **Stance:** Claude reads the headline and up to the first 12,000 characters
+  of text, and labels how the article portrays that candidate: positive,
+  negative, neutral, or not about them. A bad event reported in a dry tone
+  (an indictment, a poll slump) still counts as negative.
+- **Chart:** one panel per candidate, with the other candidates in gray for
+  comparison. Panels are ordered by average % positive. Hollow points mark
+  months with fewer than 30 classified articles.
+- **% positive** = positive ÷ (positive + negative + neutral). The CSV also has
+  % negative.

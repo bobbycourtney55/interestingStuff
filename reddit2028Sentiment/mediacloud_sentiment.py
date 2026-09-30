@@ -8,9 +8,13 @@ potential 2028 Democratic primary candidate positively, by month.
 `fetch` needs a Media Cloud API key (search.mediacloud.org -> your profile):
 MEDIACLOUD_API_KEY. `classify` needs Anthropic API credentials.
 
-Each candidate-month gets a random sample of matching articles (--per-month,
-default 150), so the monthly percentage is an estimate from that sample. The
-total number of matching articles is recorded too.
+Only articles whose headline names the candidate are used: Media Cloud's free
+tier returns headlines but not article text, and a headline that names someone
+is what carries a stance toward them. Each candidate-month keeps every such
+article when there are at most --per-month of them. Otherwise it takes an
+equal share from each of SAMPLE_DAYS, because the free tier also can't draw
+random samples. The free tier allows 2 requests a minute, so a full fetch
+takes about an hour and a half.
 """
 
 import argparse
@@ -33,16 +37,19 @@ MONTHLY = DATA / "mc_monthly.csv"
 CHART = DATA / "mc_pct_positive.png"
 
 US_NATIONAL = 34412234  # Media Cloud "United States - National" collection
-MAX_TEXT = 12000  # characters of article text sent to Claude; stance is set well before this
+MAX_TEXT = 12000  # characters of article text sent to Claude, when the account can fetch text
+SAMPLE_DAYS = (5, 12, 19, 26)  # days of the month sampled when a month has more than --per-month articles
 
+# Headline must name the candidate. "Harris" alone also hits other Harrises, so a
+# Harris headline counts only when the article text says "Kamala" too.
 QUERIES = {
-    "Gavin Newsom": "Newsom",
-    "Alexandria Ocasio-Cortez": '"Ocasio-Cortez" OR AOC',
-    "Pete Buttigieg": "Buttigieg",
-    "Kamala Harris": '"Kamala Harris" OR Kamala',
-    "JB Pritzker": "Pritzker",
-    "Jon Ossoff": "Ossoff",
-    "Ro Khanna": '"Ro Khanna"',
+    "Gavin Newsom": "article_title:Newsom",
+    "Alexandria Ocasio-Cortez": 'article_title:"Ocasio-Cortez" OR article_title:AOC',
+    "Pete Buttigieg": "article_title:Buttigieg",
+    "Kamala Harris": "article_title:Kamala OR (article_title:Harris AND Kamala)",
+    "JB Pritzker": "article_title:Pritzker",
+    "Jon Ossoff": "article_title:Ossoff",
+    "Ro Khanna": "article_title:Khanna",
 }
 
 
@@ -67,14 +74,19 @@ def fetch(args):
     pause = 60 / mc.RATE_LIMIT_PER_MINUTE
 
     def call(fn, *a, **kw):
-        for attempt in range(5):
+        for attempt in range(6):
             try:
                 time.sleep(pause)
                 return fn(*a, **kw)
             except Exception as e:  # the client raises plain exceptions for HTTP and network errors
-                print(f"  retrying after error: {e}")
-                time.sleep(2 ** attempt * 10)
+                print(f"  retrying after error: {str(e)[:120]}")
+                time.sleep(min(2 ** attempt * 30, 300))
         raise RuntimeError("Media Cloud kept failing; rerun fetch to resume")
+
+    def stories_between(query, start, end, n):
+        stories, more = call(mc.story_list, query, start, end, collection_ids=[US_NATIONAL],
+                             expanded=args.full_text, page_size=n)
+        return stories, bool(more)
 
     DATA.mkdir(exist_ok=True)
     have = {(r["candidate"], r["month"]) for r in read_jsonl(STORIES)}
@@ -85,16 +97,25 @@ def fetch(args):
                 month = start.strftime("%Y-%m")
                 if (name, month) in have:
                     continue
-                total = call(mc.story_count, query, start, end, collection_ids=[US_NATIONAL])["relevant"]
-                stories, _ = call(mc.story_list, query, start, end, collection_ids=[US_NATIONAL],
-                                  expanded=True, randomized=True, page_size=args.per_month)
-                stories = [s for s in stories if s.get("language", "en") == "en"][: args.per_month]
+                stories, more = stories_between(query, start, end, args.per_month)
+                sampled = more
+                if more:
+                    stories = []
+                    days = [start.replace(day=d) for d in SAMPLE_DAYS if start.replace(day=d) <= end]
+                    for day in days:
+                        stories += stories_between(query, day, day, args.per_month // len(SAMPLE_DAYS))[0]
+                seen, kept = set(), []
                 for s in stories:
+                    dup = (s.get("media_name"), (s.get("title") or "").strip().lower())
+                    if s.get("language", "en") == "en" and dup not in seen:
+                        seen.add(dup)
+                        kept.append(s)
+                for s in kept:
                     out.write(json_line({
                         "key": f"{name}|{s['id']}",
                         "candidate": name,
                         "month": month,
-                        "matching_total": total,
+                        "sampled": sampled,
                         "id": s["id"],
                         "title": s.get("title", ""),
                         "url": s.get("url", ""),
@@ -102,8 +123,12 @@ def fetch(args):
                         "publish_date": str(s.get("publish_date") or ""),
                         "text": (s.get("text") or "")[:MAX_TEXT],
                     }))
+                if not kept:  # record the month so a rerun doesn't query it again
+                    out.write(json_line({"key": f"{name}|none|{month}", "candidate": name, "month": month,
+                                         "sampled": False, "empty": True}))
                 out.flush()
-                print(f"{name} {month}: sampled {len(stories)} of {total}")
+                how = f"sampled {len(kept)} from {len(SAMPLE_DAYS)} days" if sampled else f"all {len(kept)}"
+                print(f"{name} {month}: {how}", flush=True)
 
 
 def json_line(obj):
@@ -120,7 +145,8 @@ SYSTEM = """You label how a news article portrays a specific US politician.
 - not_about: the name refers to someone or something else (e.g. a different person named Harris).
 
 Judge the portrayal of this person only, not of their party or of other people in the story.
-A negative event reported about them (an indictment, a lost vote, a poll slump) counts as negative even if the tone is dry."""
+A negative event reported about them (an indictment, a lost vote, a poll slump) counts as negative even if the tone is dry.
+Often you will see only the headline; judge the portrayal the headline conveys."""
 
 
 def classify_story(client, story):
@@ -138,7 +164,7 @@ def classify_story(client, story):
 def classify(args):
     client = anthropic.Anthropic()
     done = {r["key"] for r in read_jsonl(MC_STANCES)}
-    todo = [s for s in read_jsonl(STORIES) if s["key"] not in done]
+    todo = [s for s in read_jsonl(STORIES) if s["key"] not in done and not s.get("empty")]
     if args.limit:
         todo = todo[: args.limit]
     print(f"Classifying {len(todo)} articles ({len(done)} already done)")
@@ -164,9 +190,9 @@ MIN_N = 30  # months with fewer classified articles are drawn hollow: too noisy 
 
 def report(args):
     counts = defaultdict(Counter)
-    totals = {}
+    sampled = {}
     for s in read_jsonl(STORIES):
-        totals[(s["candidate"], s["month"])] = s["matching_total"]
+        sampled[(s["candidate"], s["month"])] = s["sampled"]
     for r in read_jsonl(MC_STANCES):
         counts[(r["candidate"], r["month"])][r["stance"]] += 1
 
@@ -176,7 +202,7 @@ def report(args):
         if not n:
             continue
         rows.append({
-            "candidate": name, "month": month, "matching_articles": totals.get((name, month)),
+            "candidate": name, "month": month, "coverage": "sampled days" if sampled.get((name, month)) else "all headlines",
             "classified": n, "positive": c["positive"], "negative": c["negative"], "neutral": c["neutral"],
             "pct_positive": round(100 * c["positive"] / n, 1),
             "pct_negative": round(100 * c["negative"] / n, 1),
@@ -262,7 +288,7 @@ def plot(rows, year):
 
     fig.suptitle(f"Share of US national news articles portraying each candidate positively, {year}",
                  x=0.012, ha="left", color=ink, fontsize=14, fontweight="bold")
-    fig.text(0.012, 0.915, "Media Cloud 'United States - National' collection; random sample per candidate-month, "
+    fig.text(0.012, 0.915, "Headlines naming the candidate in Media Cloud's 'United States - National' collection; "
                            "stance labeled by Claude", color=ink2, fontsize=10)
     fig.tight_layout(rect=(0, 0, 1, 0.9), h_pad=2.5)
     fig.savefig(CHART, dpi=160, facecolor=surface)
@@ -273,7 +299,9 @@ def main():
     parser.add_argument("--year", type=int, default=dt.date.today().year)
     sub = parser.add_subparsers(dest="cmd", required=True)
     f = sub.add_parser("fetch", help="sample articles from Media Cloud")
-    f.add_argument("--per-month", type=int, default=150, help="articles sampled per candidate-month (max 1000)")
+    f.add_argument("--per-month", type=int, default=300, help="max articles per candidate-month (max 1000)")
+    f.add_argument("--full-text", action="store_true",
+                   help="also fetch article text (needs a Media Cloud account allowed 'expanded' stories)")
     c = sub.add_parser("classify", help="label each article's portrayal of its candidate with Claude")
     c.add_argument("--workers", type=int, default=8)
     c.add_argument("--limit", type=int, default=0, help="classify at most N new articles (0 = all)")

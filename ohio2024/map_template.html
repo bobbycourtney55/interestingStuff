@@ -1,0 +1,283 @@
+<title>Ohio 2024 Presidential Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;800&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: canvass sheet — statewide result strip, then map beside a county lookup panel, then the full county table. */
+:root {
+  --bg: #f7f7f4;
+  --surface: #ffffff;
+  --ink: #1d1f22;
+  --ink-2: #4c5058;
+  --ink-3: #767a82;
+  --rule: #dcdcd6;
+  --focus: #1d1f22;
+  --mid: #e6e4df;
+  --r1: #f6c7bc; --r2: #ea8f7c; --r3: #cf523d; --r4: #9c2516; --r5: #6b170c;
+  --d1: #c8d8f3; --d2: #8fb0e6; --d3: #4f7fd0; --d4: #23509e;
+  --trump: #cf523d; --harris: #3a6cc4;
+  --font-ui: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17181a; --surface: #202225; --ink: #ecebe7; --ink-2: #b9b8b3; --ink-3: #8d8c88;
+    --rule: #34363a; --focus: #ecebe7; --mid: #3a3a38; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #17181a; --surface: #202225; --ink: #ecebe7; --ink-2: #b9b8b3; --ink-3: #8d8c88;
+  --rule: #34363a; --focus: #ecebe7; --mid: #3a3a38; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--font-ui); }
+.wrap { max-width: 1100px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 48px; display: grid; gap: 28px; }
+header { display: grid; gap: 6px; }
+.eyebrow { font: 500 12px/1 var(--font-data); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.1; font-weight: 800; margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+.sub { color: var(--ink-2); margin: 0; max-width: 65ch; }
+
+.state { display: grid; gap: 10px; }
+.state-row { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; align-items: baseline; }
+.cand { display: flex; gap: 10px; align-items: baseline; }
+.cand b { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.cand span { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.cand .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; align-self: center; }
+.bar { display: flex; height: 14px; gap: 2px; border-radius: 4px; overflow: hidden; }
+.bar > div { height: 100%; }
+.state-note { font: 13px/1.4 var(--font-data); color: var(--ink-3); }
+
+.main { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 760px) { .main { grid-template-columns: 1fr; } }
+.map-box { min-width: 0; position: relative; }
+svg.map { width: 100%; height: auto; display: block; }
+svg.map path { stroke: var(--bg); stroke-width: .8; stroke-linejoin: round; cursor: pointer; transition: opacity .12s; }
+svg.map path:focus { outline: none; }
+svg.map path.sel { stroke: var(--ink); stroke-width: 2.4; }
+svg.map:hover path:not(:hover):not(.sel) { opacity: .82; }
+svg.map text { font: 600 9px var(--font-ui); fill: var(--ink); paint-order: stroke; stroke: var(--surface); stroke-width: 2.5px; pointer-events: none; }
+
+.legend { display: grid; gap: 6px; margin-top: 14px; }
+.legend-scale { display: grid; grid-template-columns: repeat(9, 1fr); gap: 2px; }
+.legend-scale div { height: 12px; }
+.legend-scale div:first-child { border-radius: 4px 0 0 4px; } .legend-scale div:last-child { border-radius: 0 4px 4px 0; }
+.legend-labels { display: grid; grid-template-columns: repeat(9, 1fr); font: 11px var(--font-data); color: var(--ink-3); text-align: center; }
+.legend-ends { display: flex; justify-content: space-between; font-size: 12px; color: var(--ink-2); }
+
+.panel { display: grid; gap: 16px; min-width: 0; }
+label.lbl { font: 500 12px var(--font-data); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+select { width: 100%; font: 500 16px var(--font-ui); padding: 10px 12px; border-radius: 6px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); }
+select:focus-visible, th button:focus-visible, svg.map path:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 18px; display: grid; gap: 14px; }
+.card h2 { margin: 0; font-size: 24px; font-weight: 800; }
+.verdict { display: inline-block; font: 600 13px var(--font-ui); padding: 3px 10px; border-radius: 999px; color: #fff; justify-self: start; }
+.lines { display: grid; gap: 8px; }
+.line { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; font-variant-numeric: tabular-nums; align-items: baseline; }
+.line .n { color: var(--ink-2); font-family: var(--font-data); font-size: 13px; }
+.line .p { font-weight: 600; min-width: 4.5ch; text-align: right; }
+.line .nm { display: flex; gap: 8px; align-items: center; }
+.meta { font: 13px/1.5 var(--font-data); color: var(--ink-3); border-top: 1px solid var(--rule); padding-top: 10px; }
+
+.tip { position: absolute; pointer-events: none; background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.12); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tip b { display: block; }
+
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 8px; background: var(--surface); max-height: 520px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 12px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { position: sticky; top: 0; background: var(--surface); z-index: 1; }
+th button { all: unset; cursor: pointer; font: 600 12px var(--font-data); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-2); }
+th button[aria-sort]::after { content: " ↓"; }
+th button[aria-sort="ascending"]::after { content: " ↑"; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--bg); }
+tbody tr.sel { background: var(--mid); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 8px; vertical-align: -1px; }
+h3 { margin: 0 0 10px; font-size: 18px; font-weight: 800; }
+.source { font-size: 13px; color: var(--ink-3); max-width: 75ch; margin: 0; }
+@media (prefers-reduced-motion: reduce) { svg.map path { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">General election · November 5, 2024 · 88 counties</div>
+    <h1>Ohio presidential results by county</h1>
+    <p class="sub">Each county is shaded by the winner's margin. Pick your county from the list or click it on the map.</p>
+  </header>
+
+  <section class="state" aria-label="Statewide result">
+    <div class="state-row" id="stateRow"></div>
+    <div class="bar" id="stateBar" role="img"></div>
+    <div class="state-note" id="stateNote"></div>
+  </section>
+
+  <section class="main">
+    <div class="map-box" id="mapBox">
+      <svg class="map" id="map" viewBox="-4 -4 __W_PAD__ __H_PAD__" role="img" aria-label="Map of Ohio's 88 counties shaded by 2024 presidential margin"></svg>
+      <div class="tip" id="tip" hidden></div>
+      <div class="legend" aria-label="Legend: margin in percentage points">
+        <div class="legend-ends"><span>Harris won</span><span>Trump won</span></div>
+        <div class="legend-scale" id="legendScale"></div>
+        <div class="legend-labels"><span>40+</span><span>20–40</span><span>10–20</span><span>&lt;10</span><span>&lt;10</span><span>10–20</span><span>20–40</span><span>40–60</span><span>60+</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div style="display:grid;gap:6px">
+        <label class="lbl" for="pick">Your county</label>
+        <select id="pick"></select>
+      </div>
+      <div class="card" id="card" aria-live="polite"></div>
+    </div>
+  </section>
+
+  <section>
+    <h3>All 88 counties</h3>
+    <div class="tbl-wrap">
+      <table id="tbl">
+        <thead><tr>
+          <th><button type="button" data-k="name">County</button></th>
+          <th><button type="button" data-k="trump">Trump</button></th>
+          <th><button type="button" data-k="harris">Harris</button></th>
+          <th><button type="button" data-k="other">Other</button></th>
+          <th><button type="button" data-k="total">Total</button></th>
+          <th><button type="button" data-k="margin">Margin</button></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="source">County vote counts: <a href="https://github.com/tonmcg/US_County_Level_Election_Results_08-24">tonmcg/US_County_Level_Election_Results_08-24</a> (2024 county file, final counts). Its Ohio totals for Trump (3,180,116) and Harris (2,533,699) match the Ohio Secretary of State's certified results. "Other" is total minus the two major candidates. County boundaries: U.S. Census Bureau via Plotly datasets. Margin is Trump % minus Harris % of all votes cast for president.</p>
+</div>
+
+<script>
+const DATA = __DATA__;
+const css = n => `var(--${n})`;
+DATA.forEach(c => {
+  c.pt = c.trump / c.total * 100;
+  c.ph = c.harris / c.total * 100;
+  c.po = c.other / c.total * 100;
+  c.margin = c.pt - c.ph;
+});
+function fillFor(m) {
+  const a = Math.abs(m);
+  if (m >= 0) return css(a >= 60 ? "r5" : a >= 40 ? "r4" : a >= 20 ? "r3" : a >= 10 ? "r2" : "r1");
+  return css(a >= 40 ? "d4" : a >= 20 ? "d3" : a >= 10 ? "d2" : "d1");
+}
+const fmt = n => n.toLocaleString("en-US");
+const pct = n => n.toFixed(1) + "%";
+const marginText = m => (m >= 0 ? "Trump +" : "Harris +") + Math.abs(m).toFixed(1);
+
+// Statewide
+const S = DATA.reduce((s, c) => ({ trump: s.trump + c.trump, harris: s.harris + c.harris, other: s.other + c.other, total: s.total + c.total }), { trump: 0, harris: 0, other: 0, total: 0 });
+const won = { t: DATA.filter(c => c.margin > 0).length };
+won.h = DATA.length - won.t;
+document.getElementById("stateRow").innerHTML = `
+  <div class="cand"><span class="dot" style="background:${css("trump")}"></span><b>Trump ${pct(S.trump / S.total * 100)}</b><span>${fmt(S.trump)} votes · ${won.t} counties</span></div>
+  <div class="cand"><span class="dot" style="background:${css("harris")}"></span><b>Harris ${pct(S.harris / S.total * 100)}</b><span>${fmt(S.harris)} votes · ${won.h} counties</span></div>`;
+const bar = document.getElementById("stateBar");
+bar.setAttribute("aria-label", `Trump ${pct(S.trump / S.total * 100)}, Harris ${pct(S.harris / S.total * 100)}, other ${pct(S.other / S.total * 100)}`);
+bar.innerHTML = `<div style="width:${S.trump / S.total * 100}%;background:${css("trump")}"></div><div style="width:${S.other / S.total * 100}%;background:${css("ink-3")}"></div><div style="flex:1;background:${css("harris")}"></div>`;
+document.getElementById("stateNote").textContent = `Trump +${((S.trump - S.harris) / S.total * 100).toFixed(1)} statewide · ${fmt(S.total)} votes for president · other candidates ${pct(S.other / S.total * 100)}`;
+
+// Legend
+document.getElementById("legendScale").innerHTML = ["d4", "d3", "d2", "d1", "r1", "r2", "r3", "r4", "r5"].map(k => `<div style="background:${css(k)}"></div>`).join("");
+
+// Map
+const svg = document.getElementById("map");
+const NS = "http://www.w3.org/2000/svg";
+const byFips = {};
+DATA.forEach(c => {
+  const p = document.createElementNS(NS, "path");
+  p.setAttribute("d", c.d);
+  p.setAttribute("fill", fillFor(c.margin));
+  p.setAttribute("tabindex", "0");
+  p.setAttribute("aria-label", `${c.name} County, ${marginText(c.margin)}`);
+  p.dataset.fips = c.fips;
+  svg.appendChild(p);
+  c.el = p;
+  byFips[c.fips] = c;
+});
+const labels = document.createElementNS(NS, "g");
+svg.appendChild(labels);
+
+const box = document.getElementById("mapBox");
+const tip = document.getElementById("tip");
+svg.addEventListener("pointermove", e => {
+  const c = byFips[e.target.dataset?.fips];
+  if (!c) { tip.hidden = true; return; }
+  tip.innerHTML = `<b>${c.name} County</b>${marginText(c.margin)} · Trump ${pct(c.pt)} · Harris ${pct(c.ph)}`;
+  tip.hidden = false;
+  const r = box.getBoundingClientRect();
+  let x = e.clientX - r.left + 14, y = e.clientY - r.top + 14;
+  if (x + tip.offsetWidth > r.width) x = e.clientX - r.left - tip.offsetWidth - 14;
+  tip.style.left = Math.max(0, x) + "px";
+  tip.style.top = y + "px";
+});
+svg.addEventListener("pointerleave", () => tip.hidden = true);
+svg.addEventListener("click", e => { const f = e.target.dataset?.fips; if (f) select(f); });
+svg.addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target.dataset?.fips) { e.preventDefault(); select(e.target.dataset.fips); } });
+
+// Picker
+const pick = document.getElementById("pick");
+pick.innerHTML = DATA.map(c => `<option value="${c.fips}">${c.name}</option>`).join("");
+pick.addEventListener("change", () => select(pick.value));
+
+// Table
+const tbody = document.querySelector("#tbl tbody");
+let sortK = "name", sortAsc = true;
+function renderTable() {
+  const rows = [...DATA].sort((a, b) => {
+    const v = sortK === "name" ? a.name.localeCompare(b.name) : a[sortK] - b[sortK];
+    return sortAsc ? v : -v;
+  });
+  tbody.innerHTML = rows.map(c => `<tr data-fips="${c.fips}" class="${c.fips === current ? "sel" : ""}">
+    <td>${c.name}</td><td>${fmt(c.trump)} <small>(${pct(c.pt)})</small></td><td>${fmt(c.harris)} <small>(${pct(c.ph)})</small></td>
+    <td>${fmt(c.other)}</td><td>${fmt(c.total)}</td><td><span class="sw" style="background:${fillFor(c.margin)}"></span>${marginText(c.margin)}</td></tr>`).join("");
+  document.querySelectorAll("#tbl th button").forEach(b => {
+    if (b.dataset.k === sortK) b.setAttribute("aria-sort", sortAsc ? "ascending" : "descending");
+    else b.removeAttribute("aria-sort");
+  });
+}
+document.querySelectorAll("#tbl th button").forEach(b => b.addEventListener("click", () => {
+  if (sortK === b.dataset.k) sortAsc = !sortAsc;
+  else { sortK = b.dataset.k; sortAsc = sortK === "name"; }
+  renderTable();
+}));
+tbody.addEventListener("click", e => { const tr = e.target.closest("tr"); if (tr) { select(tr.dataset.fips); window.scrollTo({ top: 0, behavior: "smooth" }); } });
+
+// Selection
+let current = null;
+function rank(c) {
+  const sorted = [...DATA].sort((a, b) => b.margin - a.margin);
+  return sorted.indexOf(c) + 1;
+}
+function select(fips) {
+  const c = byFips[fips];
+  if (!c) return;
+  if (current) byFips[current].el.classList.remove("sel");
+  current = fips;
+  c.el.classList.add("sel");
+  svg.insertBefore(c.el, labels); // draw the selected outline on top
+  pick.value = fips;
+  labels.innerHTML = `<text x="${c.cx}" y="${c.cy}" text-anchor="middle" dominant-baseline="middle">${c.name}</text>`;
+  const winner = c.margin >= 0 ? "Trump" : "Harris";
+  const swing = c.margin - (S.trump - S.harris) / S.total * 100;
+  document.getElementById("card").innerHTML = `
+    <h2>${c.name} County</h2>
+    <span class="verdict" style="background:${css(c.margin >= 0 ? "r3" : "d3")}">${winner} won by ${Math.abs(c.margin).toFixed(1)} pts</span>
+    <div class="lines">
+      <div class="line"><span class="nm"><span class="sw" style="width:10px;height:10px;border-radius:50%;background:${css("trump")}"></span>Donald Trump</span><span class="n">${fmt(c.trump)}</span><span class="p">${pct(c.pt)}</span></div>
+      <div class="line"><span class="nm"><span class="sw" style="width:10px;height:10px;border-radius:50%;background:${css("harris")}"></span>Kamala Harris</span><span class="n">${fmt(c.harris)}</span><span class="p">${pct(c.ph)}</span></div>
+      <div class="line"><span class="nm"><span class="sw" style="width:10px;height:10px;border-radius:50%;background:${css("ink-3")}"></span>Other</span><span class="n">${fmt(c.other)}</span><span class="p">${pct(c.po)}</span></div>
+    </div>
+    <div class="meta">${fmt(c.total)} votes cast · FIPS ${c.fips}<br>
+      ${Math.abs(swing).toFixed(1)} pts ${swing >= 0 ? "more Republican" : "more Democratic"} than Ohio overall<br>
+      #${rank(c)} of 88 by Trump margin</div>`;
+  renderTable();
+  try { localStorage.setItem("oh24-county", fips); } catch (e) {}
+}
+let start = "39049"; // Franklin until the viewer picks one
+try { const s = localStorage.getItem("oh24-county"); if (s && byFips[s]) start = s; } catch (e) {}
+select(start);
+</script>

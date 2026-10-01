@@ -62,3 +62,12 @@ python mediacloud_sentiment.py report                  # -> data/mc_monthly.csv,
   months with fewer than 30 classified articles.
 - **% positive** = positive ÷ (positive + negative + neutral). The CSV also has
   % negative.
+
+### 2026 results (Jan–Sep)
+
+`data/mc_pct_positive.png` and `data/mc_monthly.csv` hold the results for
+6,273 headlines. The labels in `data/mc_stances.jsonl` were made by Claude
+reading every headline in a Claude Code session, not through the API, using
+the same rubric as `classify`. `data/labels/` has the per-batch label files,
+`show.py` (prints headlines by index) and `merge.py` (rebuilds
+`mc_stances.jsonl`). Running `classify` instead would relabel through the API.

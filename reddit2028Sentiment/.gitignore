@@ -1,3 +1,7 @@
 __pycache__/
 data/*
 !data/mc_stories.jsonl
+!data/mc_stances.jsonl
+!data/mc_monthly.csv
+!data/mc_pct_positive.png
+!data/labels/

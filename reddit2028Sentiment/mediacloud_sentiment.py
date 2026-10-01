@@ -231,6 +231,10 @@ def plot(rows, year):
     # Panels ordered by average % positive, highest first, so the grid reads as a ranking.
     names.sort(key=lambda n: -sum(r["pct_positive"] for r in series[n]) / len(series[n]))
 
+    # Shared y-axis scaled to the data (rounded up to the next 10%), so low shares stay readable.
+    top = min(100, max(10, -(-max(r["pct_positive"] for r in rows) // 10) * 10))
+    ticks = list(range(0, int(top) + 1, 10 if top <= 50 else 25))
+
     plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10})
     fig, axes = plt.subplots(2, 4, figsize=(14, 6.6), sharex=True, sharey=True, facecolor=surface)
     for ax in axes.flat:
@@ -241,9 +245,9 @@ def plot(rows, year):
         ax.tick_params(colors=muted, length=0)
         ax.grid(axis="y", color=grid, linewidth=1)
         ax.set_axisbelow(True)
-        ax.set_ylim(0, 100)
-        ax.set_yticks([0, 25, 50, 75, 100])
-        ax.set_yticklabels(["0%", "25%", "50%", "75%", "100%"])
+        ax.set_ylim(0, top)
+        ax.set_yticks(ticks)
+        ax.set_yticklabels([f"{t}%" for t in ticks])
         ax.set_xticks(range(len(all_months)))
         ax.set_xticklabels(labels)
 

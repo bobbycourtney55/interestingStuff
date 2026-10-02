@@ -71,3 +71,26 @@ reading every headline in a Claude Code session, not through the API, using
 the same rubric as `classify`. `data/labels/` has the per-batch label files,
 `show.py` (prints headlines by index) and `merge.py` (rebuilds
 `mc_stances.jsonl`). Running `classify` instead would relabel through the API.
+
+### Outlet lean and traffic
+
+`data/mc_outlets.csv` has one row per outlet (143) with:
+
+- **Audience lean** (`lean`, `lean_group`): from Media Cloud's 2019 US partisanship
+  collections, which group outlets by whether their stories were shared mostly
+  by Twitter followers of liberal or conservative politicians (so it measures
+  readership, not editorial stance). Outlets listed in several groups are
+  averaged on a −2 (left) to +2 (right) scale; `mc_2019_groups` shows the raw
+  groups. Four outlets missing from the collections (Newsweek, Fortune, Fox
+  Business, one blog) were assigned by judgment (`lean_source=judgment`).
+  Note the data is from 2019.
+- **Traffic** (`umbrella_rank`, `traffic_tier`): rank in the Cisco Umbrella
+  top-1M domain list (by DNS query volume; lower = more traffic). This is a
+  popularity rank, not a visitor count.
+
+Rebuild with `python data/outlets/fetch_partisanship.py` (needs
+`MEDIACLOUD_API_KEY`, about 7 minutes), download
+`https://s3-us-west-1.amazonaws.com/umbrella-static/top-1m.csv.zip` into
+`data/outlets/`, then `python data/outlets/build_outlets.py`. `report` then
+also writes `data/mc_by_lean.csv` and `data/mc_by_lean.png`, which show tone per
+candidate split by outlet lean.

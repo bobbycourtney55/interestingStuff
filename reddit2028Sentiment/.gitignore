@@ -4,4 +4,9 @@ data/*
 !data/mc_stances.jsonl
 !data/mc_monthly.csv
 !data/mc_pct_positive.png
+!data/mc_outlets.csv
+!data/mc_by_lean.csv
+!data/mc_by_lean.png
 !data/labels/
+!data/outlets/
+data/outlets/*.zip

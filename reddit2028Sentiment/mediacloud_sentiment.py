@@ -33,6 +33,9 @@ STORIES = DATA / "mc_stories.jsonl"
 MC_STANCES = DATA / "mc_stances.jsonl"
 MONTHLY = DATA / "mc_monthly.csv"
 CHART = DATA / "mc_pct_positive.png"
+OUTLETS = DATA / "mc_outlets.csv"  # built by data/outlets/build_outlets.py
+BY_LEAN = DATA / "mc_by_lean.csv"
+LEAN_CHART = DATA / "mc_by_lean.png"
 
 US_NATIONAL = 34412234  # Media Cloud "United States - National" collection
 MAX_TEXT = 12000  # characters of article text sent to Claude, when the account can fetch text
@@ -211,6 +214,118 @@ def report(args):
     print(f"Wrote {MONTHLY}")
     plot(rows, args.year)
     print(f"Wrote {CHART}")
+    if OUTLETS.exists():
+        report_by_lean()
+
+
+def report_by_lean():
+    """Positive/negative shares per candidate, split by the audience lean of the outlet."""
+    outlets = {r["outlet"]: r for r in csv.DictReader(OUTLETS.open())}
+    counts = defaultdict(Counter)
+    ranks = defaultdict(list)
+    names = defaultdict(set)
+    for r in read_jsonl(MC_STANCES):
+        if r["stance"] not in ("positive", "negative", "neutral"):
+            continue
+        o = outlets[r["media_name"]]
+        key = (r["candidate"], o["lean_group"])
+        counts[key][r["stance"]] += 1
+        names[key].add(r["media_name"])
+        if o["umbrella_rank"]:
+            ranks[key].append(int(o["umbrella_rank"]))
+
+    rows = []
+    for name in QUERIES:
+        for group in ("Left", "Center", "Right"):
+            c = counts[(name, group)]
+            n = sum(c.values())
+            if not n:
+                continue
+            rk = sorted(ranks[(name, group)])
+            rows.append({
+                "candidate": name, "outlet_lean": group, "headlines": n, "outlets": len(names[(name, group)]),
+                "positive": c["positive"], "negative": c["negative"], "neutral": c["neutral"],
+                "pct_positive": round(100 * c["positive"] / n, 1),
+                "pct_negative": round(100 * c["negative"] / n, 1),
+                # Umbrella rank of the outlet behind the median headline (lower = more traffic).
+                "median_outlet_umbrella_rank": rk[len(rk) // 2] if rk else "",
+            })
+    with BY_LEAN.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    print(f"Wrote {BY_LEAN}")
+    plot_by_lean(rows)
+    print(f"Wrote {LEAN_CHART}")
+
+
+def plot_by_lean(rows):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    surface, ink, ink2, muted, grid = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9"
+    pos_c, neg_c = "#2a78d6", "#eb6834"  # blue/orange, not red/blue, so polarity isn't read as party
+    groups = ("Left", "Center", "Right")
+    by = {(r["candidate"], r["outlet_lean"]): r for r in rows}
+    names = [n for n in QUERIES if any((n, g) in by for g in groups)]
+    names.sort(key=lambda n: -sum(by[(n, g)]["positive"] for g in groups if (n, g) in by)
+               / sum(by[(n, g)]["headlines"] for g in groups if (n, g) in by))
+    lim = max(max(r["pct_negative"], r["pct_positive"]) for r in rows)
+    lim = -(-lim // 10) * 10 + 20  # room for the value labels at the bar ends
+    step = 40 if lim > 60 else 20
+
+    plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10})
+    fig, axes = plt.subplots(2, 4, figsize=(14, 6.8), sharex=True, facecolor=surface)
+    for ax in axes.flat:
+        ax.set_facecolor(surface)
+        for side in ("top", "right", "left", "bottom"):
+            ax.spines[side].set_visible(False)
+        ax.tick_params(colors=muted, length=0)
+        ax.set_xlim(-lim, lim)
+        ax.grid(axis="x", color=grid, linewidth=1)
+        ax.set_axisbelow(True)
+        ticks = [t for t in range(-step * int(lim // step), int(lim) + 1, step)]
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([f"{abs(t)}%" for t in ticks])
+
+    for ax, name in zip(axes.flat, names):
+        ax.axvline(0, color=muted, linewidth=1)
+        ys = list(range(len(groups)))[::-1]
+        for y, g in zip(ys, groups):
+            r = by.get((name, g))
+            if not r:
+                continue
+            ax.barh(y, -r["pct_negative"], height=0.55, color=neg_c, edgecolor=surface, linewidth=2)
+            ax.barh(y, r["pct_positive"], height=0.55, color=pos_c, edgecolor=surface, linewidth=2)
+            ax.text(-r["pct_negative"] - 1.5, y, f"{r['pct_negative']:.0f}%", ha="right", va="center", color=ink2, fontsize=9)
+            ax.text(r["pct_positive"] + 1.5, y, f"{r['pct_positive']:.0f}%", ha="left", va="center", color=ink2, fontsize=9)
+            hollow = r["headlines"] < MIN_N
+            ax.text(lim, y - 0.42, f"n={r['headlines']}" + ("*" if hollow else ""), ha="right", va="center",
+                    color=muted, fontsize=8)
+        ax.set_yticks(ys)
+        ax.set_yticklabels([f"{g}-leaning" if g != "Center" else "Center" for g in groups], color=ink2)
+        ax.set_ylim(-0.7, len(groups) - 0.3)
+        ax.set_title(name, loc="left", color=ink, fontsize=11, fontweight="bold")
+
+    for ax in list(axes.flat)[len(names):]:
+        ax.axis("off")
+    key = axes.flat[len(names)] if len(names) < 8 else None
+    if key is not None:
+        for y, (c, label) in zip((0.78, 0.64), ((neg_c, "% of headlines negative"), (pos_c, "% of headlines positive"))):
+            key.add_patch(plt.Rectangle((0.05, y - 0.04), 0.12, 0.08, color=c, transform=key.transAxes))
+            key.text(0.22, y, label, va="center", color=ink2, transform=key.transAxes)
+        key.text(0.05, 0.46, "Rows group outlets by who shares\nthem (Media Cloud 2019 audience\npartisanship; "
+                 "Left includes center-left,\nRight includes center-right).\nNeutral headlines are the rest\n"
+                 f"of each row. * fewer than {MIN_N} headlines.",
+                 va="top", color=muted, fontsize=9, transform=key.transAxes)
+
+    fig.suptitle("Headline tone toward each candidate, by the political lean of the outlet's audience, Jan-Sep 2026",
+                 x=0.012, ha="left", color=ink, fontsize=14, fontweight="bold")
+    fig.text(0.012, 0.915, "US national news headlines naming the candidate (Media Cloud); stance labeled by Claude",
+             color=ink2, fontsize=10)
+    fig.tight_layout(rect=(0, 0, 1, 0.9), h_pad=2.5, w_pad=2)
+    fig.savefig(LEAN_CHART, dpi=160, facecolor=surface)
 
 
 def plot(rows, year):

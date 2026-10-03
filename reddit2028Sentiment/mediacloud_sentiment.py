@@ -329,10 +329,10 @@ def plot_by_lean(rows):
                  va="top", color=muted, fontsize=9, transform=key.transAxes)
 
     fig.suptitle("Headline tone toward each candidate, by the political lean of the outlet's audience, Jan-Sep 2026",
-                 x=0.012, ha="left", color=ink, fontsize=14, fontweight="bold")
-    fig.text(0.012, 0.915, "US national news headlines naming the candidate (Media Cloud); stance labeled by Claude",
+                 x=0.012, y=1 - 0.2 / fig.get_figheight(), ha="left", va="top", color=ink, fontsize=14, fontweight="bold")
+    fig.text(0.012, 1 - 0.6 / fig.get_figheight(), "US national news headlines naming the candidate (Media Cloud); stance labeled by Claude",
              color=ink2, fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.9), h_pad=2.5, w_pad=2)
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.95 / fig.get_figheight()), h_pad=2.5, w_pad=2)
     fig.savefig(LEAN_CHART, dpi=160, facecolor=surface)
 
 
@@ -411,10 +411,10 @@ def plot(rows, year):
                  va="center", color=muted, fontsize=9, transform=key.transAxes)
 
     fig.suptitle(f"Share of US national news articles portraying each candidate positively, {year}",
-                 x=0.012, ha="left", color=ink, fontsize=14, fontweight="bold")
-    fig.text(0.012, 0.915, "Headlines naming the candidate in Media Cloud's 'United States - National' collection; "
+                 x=0.012, y=1 - 0.2 / fig.get_figheight(), ha="left", va="top", color=ink, fontsize=14, fontweight="bold")
+    fig.text(0.012, 1 - 0.6 / fig.get_figheight(), "Headlines naming the candidate in Media Cloud's 'United States - National' collection; "
                            "stance labeled by Claude", color=ink2, fontsize=10)
-    fig.tight_layout(rect=(0, 0, 1, 0.9), h_pad=2.5)
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.95 / fig.get_figheight()), h_pad=2.5)
     fig.savefig(CHART, dpi=160, facecolor=surface)
 
 

@@ -2,7 +2,8 @@
 import json, sys
 from pathlib import Path
 CODES = {"Gavin Newsom": "N", "Alexandria Ocasio-Cortez": "A", "Pete Buttigieg": "B", "Kamala Harris": "H",
-         "JB Pritzker": "P", "Jon Ossoff": "O", "Ro Khanna": "K"}
+         "JB Pritzker": "P", "Jon Ossoff": "O", "Ro Khanna": "K",
+         "Andy Beshear": "Y"}  # appended last so earlier candidates keep their indexes
 rows = [json.loads(l) for l in open(Path(__file__).parent.parent / "mc_stories.jsonl")]
 rows = [r for r in rows if not r.get("empty")]
 rows.sort(key=lambda r: (list(CODES).index(r["candidate"]), r["month"], r["key"]))

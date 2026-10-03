@@ -50,6 +50,7 @@ QUERIES = {
     "JB Pritzker": "article_title:Pritzker",
     "Jon Ossoff": "article_title:Ossoff",
     "Ro Khanna": "article_title:Khanna",
+    "Andy Beshear": "article_title:Beshear",
 }
 
 
@@ -259,6 +260,12 @@ def report_by_lean():
     print(f"Wrote {LEAN_CHART}")
 
 
+def grid_for(n):
+    """Rows and columns for n candidate panels plus one panel for the key."""
+    ncols = 4 if n + 1 <= 8 else 3
+    return -(-(n + 1) // ncols), ncols
+
+
 def plot_by_lean(rows):
     import matplotlib
     matplotlib.use("Agg")
@@ -276,7 +283,8 @@ def plot_by_lean(rows):
     step = 40 if lim > 60 else 20
 
     plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10})
-    fig, axes = plt.subplots(2, 4, figsize=(14, 6.8), sharex=True, facecolor=surface)
+    nrows, ncols = grid_for(len(names))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(14, 3.4 * nrows), sharex=True, facecolor=surface)
     for ax in axes.flat:
         ax.set_facecolor(surface)
         for side in ("top", "right", "left", "bottom"):
@@ -310,7 +318,7 @@ def plot_by_lean(rows):
 
     for ax in list(axes.flat)[len(names):]:
         ax.axis("off")
-    key = axes.flat[len(names)] if len(names) < 8 else None
+    key = axes.flat[len(names)]
     if key is not None:
         for y, (c, label) in zip((0.78, 0.64), ((neg_c, "% of headlines negative"), (pos_c, "% of headlines positive"))):
             key.add_patch(plt.Rectangle((0.05, y - 0.04), 0.12, 0.08, color=c, transform=key.transAxes))
@@ -351,7 +359,8 @@ def plot(rows, year):
     ticks = list(range(0, int(top) + 1, 10 if top <= 50 else 25))
 
     plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10})
-    fig, axes = plt.subplots(2, 4, figsize=(14, 6.6), sharex=True, sharey=True, facecolor=surface)
+    nrows, ncols = grid_for(len(names))
+    fig, axes = plt.subplots(nrows, ncols, figsize=(14, 3.3 * nrows), sharex=True, sharey=True, facecolor=surface)
     for ax in axes.flat:
         ax.set_facecolor(surface)
         for side in ("top", "right", "left"):
@@ -386,7 +395,7 @@ def plot(rows, year):
                          f"  ·  n={last['classified']}",
                 transform=ax.transAxes, color=ink2, fontsize=9)
 
-    key = axes.flat[len(names)] if len(names) < 8 else None
+    key = axes.flat[len(names)]
     for ax in list(axes.flat)[len(names):]:
         ax.axis("off")
     if key is not None:

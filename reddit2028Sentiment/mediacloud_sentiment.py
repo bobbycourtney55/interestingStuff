@@ -278,9 +278,13 @@ def plot_by_lean(rows):
     names = [n for n in QUERIES if any((n, g) in by for g in groups)]
     names.sort(key=lambda n: -sum(by[(n, g)]["positive"] for g in groups if (n, g) in by)
                / sum(by[(n, g)]["headlines"] for g in groups if (n, g) in by))
-    lim = max(max(r["pct_negative"], r["pct_positive"]) for r in rows)
-    lim = -(-lim // 10) * 10 + 20  # room for the value labels at the bar ends
-    step = 40 if lim > 60 else 20
+    # One shared count scale so bar lengths compare across candidates; every bar is labelled.
+    from matplotlib.ticker import MaxNLocator
+    # Asymmetric limits (negative bars run far longer) but one unit scale for both sides and all panels.
+    left = max(r["negative"] for r in rows) * 1.18
+    right = max(r["positive"] for r in rows) * 1.9
+    lim = left + right
+    ticks = [t for t in MaxNLocator(nbins=5, integer=True).tick_values(-left, right) if -left <= t <= right]
 
     plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10})
     nrows, ncols = grid_for(len(names))
@@ -290,12 +294,11 @@ def plot_by_lean(rows):
         for side in ("top", "right", "left", "bottom"):
             ax.spines[side].set_visible(False)
         ax.tick_params(colors=muted, length=0)
-        ax.set_xlim(-lim, lim)
+        ax.set_xlim(-left, right)
         ax.grid(axis="x", color=grid, linewidth=1)
         ax.set_axisbelow(True)
-        ticks = [t for t in range(-step * int(lim // step), int(lim) + 1, step)]
         ax.set_xticks(ticks)
-        ax.set_xticklabels([f"{abs(t)}%" for t in ticks])
+        ax.set_xticklabels([f"{abs(int(t)):,}" for t in ticks])
 
     for ax, name in zip(axes.flat, names):
         ax.axvline(0, color=muted, linewidth=1)
@@ -304,15 +307,15 @@ def plot_by_lean(rows):
             r = by.get((name, g))
             if not r:
                 continue
-            ax.barh(y, -r["pct_negative"], height=0.55, color=neg_c, edgecolor=surface, linewidth=2)
-            ax.barh(y, r["pct_positive"], height=0.55, color=pos_c, edgecolor=surface, linewidth=2)
-            ax.text(-r["pct_negative"] - 1.5, y, f"{r['pct_negative']:.0f}%", ha="right", va="center", color=ink2, fontsize=9)
-            ax.text(r["pct_positive"] + 1.5, y, f"{r['pct_positive']:.0f}%", ha="left", va="center", color=ink2, fontsize=9)
-            hollow = r["headlines"] < MIN_N
-            ax.text(lim, y - 0.42, f"n={r['headlines']}" + ("*" if hollow else ""), ha="right", va="center",
-                    color=muted, fontsize=8)
+            pad = lim * 0.02
+            ax.barh(y, -r["negative"], height=0.55, color=neg_c, edgecolor=surface, linewidth=2)
+            ax.barh(y, r["positive"], height=0.55, color=pos_c, edgecolor=surface, linewidth=2)
+            ax.text(-r["negative"] - pad, y, f"{r['negative']:,}", ha="right", va="center", color=ink2, fontsize=9)
+            ax.text(r["positive"] + pad, y, f"{r['positive']:,}", ha="left", va="center", color=ink2, fontsize=9)
         ax.set_yticks(ys)
-        ax.set_yticklabels([f"{g}-leaning" if g != "Center" else "Center" for g in groups], color=ink2)
+        ax.set_yticklabels([(f"{g}-leaning" if g != "Center" else "Center")
+                            + (f"\n{by[(name, g)]['neutral']:,} neutral" if (name, g) in by else "")
+                            for g in groups], color=ink2, linespacing=1.5)
         ax.set_ylim(-0.7, len(groups) - 0.3)
         ax.set_title(name, loc="left", color=ink, fontsize=11, fontweight="bold")
 
@@ -320,15 +323,15 @@ def plot_by_lean(rows):
         ax.axis("off")
     key = axes.flat[len(names)]
     if key is not None:
-        for y, (c, label) in zip((0.78, 0.64), ((neg_c, "% of headlines negative"), (pos_c, "% of headlines positive"))):
+        for y, (c, label) in zip((0.78, 0.64), ((neg_c, "Negative headlines"), (pos_c, "Positive headlines"))):
             key.add_patch(plt.Rectangle((0.05, y - 0.04), 0.12, 0.08, color=c, transform=key.transAxes))
             key.text(0.22, y, label, va="center", color=ink2, transform=key.transAxes)
         key.text(0.05, 0.46, "Rows group outlets by who shares\nthem (Media Cloud 2019 audience\npartisanship; "
-                 "Left includes center-left,\nRight includes center-right).\nNeutral headlines are the rest\n"
-                 f"of each row. * fewer than {MIN_N} headlines.",
+                 "Left includes center-left,\nRight includes center-right).\nNeutral headlines are counted\n"
+                 "under each row label. One scale\nfor all panels.",
                  va="top", color=muted, fontsize=9, transform=key.transAxes)
 
-    fig.suptitle("Headline tone toward each candidate, by the political lean of the outlet's audience, Jan-Sep 2026",
+    fig.suptitle("Positive and negative headlines about each candidate, by outlet audience lean, Jan-Sep 2026",
                  x=0.012, y=1 - 0.2 / fig.get_figheight(), ha="left", va="top", color=ink, fontsize=14, fontweight="bold")
     fig.text(0.012, 1 - 0.6 / fig.get_figheight(), "US national news headlines naming the candidate (Media Cloud); stance labeled by Claude",
              color=ink2, fontsize=10)

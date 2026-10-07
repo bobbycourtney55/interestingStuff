@@ -144,10 +144,12 @@ def main():
     print(f"{len(counts):,} candidates with >= {args.threshold * 0.8:.0f} streamed reposts", file=sys.stderr)
 
     popular = []
-    for batch in chunks([u for u, _ in counts.most_common()], 25):
+    for i, batch in enumerate(chunks([u for u, _ in counts.most_common()], 25)):
         for pv in get_json("app.bsky.feed.getPosts", [("uris", u) for u in batch])["posts"]:
             if pv.get("repostCount", 0) >= args.threshold and eligible(pv, args.min_words):
                 popular.append(post_row(pv, "popular", now))
+        if (i + 1) % 100 == 0:
+            print(f"  hydrated {(i + 1) * 25:,}/{len(counts):,} candidates, {len(popular):,} kept", file=sys.stderr)
     print(f"{len(popular):,} popular posts (English, top-level, >= {args.threshold} reposts)", file=sys.stderr)
     if len(popular) > args.max_popular:
         popular = random.sample(popular, args.max_popular)

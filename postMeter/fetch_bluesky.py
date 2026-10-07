@@ -88,14 +88,19 @@ def sample_hour(hour_start, per_hour, min_words, max_seconds=120):
 
 
 def get_json(endpoint, params, retries=4):
-    for attempt in range(retries):
-        r = requests.get(f"{APPVIEW}/{endpoint}", params=params, timeout=30)
-        if r.status_code == 429 or r.status_code >= 500:
+    for attempt in range(retries + 1):
+        try:
+            r = requests.get(f"{APPVIEW}/{endpoint}", params=params, timeout=30)
+        except requests.ConnectionError:
+            if attempt == retries:
+                raise
+            time.sleep(2 ** (attempt + 1))
+            continue
+        if (r.status_code == 429 or r.status_code >= 500) and attempt < retries:
             time.sleep(2 ** (attempt + 1))
             continue
         r.raise_for_status()
         return r.json()
-    r.raise_for_status()
 
 
 def chunks(xs, n):
@@ -135,7 +140,8 @@ def hydrate(posts):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     yesterday = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=1)).date()
-    ap.add_argument("--date", default=str(yesterday), help="UTC day to sample (default: yesterday)")
+    ap.add_argument("--date", default=str(yesterday),
+                    help="UTC day, or start datetime of a 24h window, to sample (default: yesterday)")
     ap.add_argument("--per-hour", type=int, default=100)
     ap.add_argument("--min-words", type=int, default=5)
     ap.add_argument("--seed", type=int, default=0)
@@ -144,11 +150,21 @@ def main():
     random.seed(args.seed)
 
     day = dt.datetime.fromisoformat(args.date).replace(tzinfo=dt.timezone.utc)
-    posts = []
-    for h in range(24):
-        got = sample_hour(day + dt.timedelta(hours=h), args.per_hour, args.min_words)
-        print(f"{h:02d}:00 UTC  {len(got)} posts", file=sys.stderr)
-        posts += got
+    # Cache the raw sample so a failed hydration can be retried without re-sampling.
+    raw_path = args.output + ".raw.json"
+    if os.path.exists(raw_path):
+        with open(raw_path, encoding="utf-8") as f:
+            posts = json.load(f)
+        print(f"loaded {len(posts)} sampled posts from {raw_path}", file=sys.stderr)
+    else:
+        posts = []
+        for h in range(24):
+            start = day + dt.timedelta(hours=h)
+            got = sample_hour(start, args.per_hour, args.min_words)
+            print(f"{start:%Y-%m-%d %H}:00 UTC  {len(got)} posts", file=sys.stderr)
+            posts += got
+        with open(raw_path, "w", encoding="utf-8") as f:
+            json.dump(posts, f)
     posts = hydrate(posts)
     print(f"{len(posts)} posts after hydration", file=sys.stderr)
 

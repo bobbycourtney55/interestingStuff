@@ -45,6 +45,25 @@ soon after the target day.
 feature and likes/reposts. The partial version controls for log followers,
 syllable count, post age and embed type (media/link/quote).
 
+## Popular posts vs the same authors' ordinary posts
+
+```
+python fetch_popular.py --start 2026-10-06T08:00 --threshold 25 -o bsky_pairs.csv
+python analyze_pairs.py bsky_pairs.csv
+```
+
+`fetch_popular.py` replays the Jetstream repost stream from the window start to
+now and tallies reposts per post created in the window (creation time comes from
+the post's record key). It then keeps English, top-level posts with at least
+`--threshold` reposts, randomly capped at `--max-popular`. Each author's recent
+feed supplies up to 5 of their other posts below the threshold as controls. A
+full day takes about 15 minutes to tally and 30+ minutes to look up; the tally is
+cached next to the output.
+
+`analyze_pairs.py` compares each feature within author (popular minus control),
+with bootstrap CIs over authors, sign-flip permutation p-values, and a version
+adjusted for syllable count.
+
 ## Known limitations
 
 - Stress is dictionary stress, not performed stress. Monosyllables are stressed

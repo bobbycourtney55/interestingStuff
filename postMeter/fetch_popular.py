@@ -24,6 +24,7 @@ import sys
 import time
 from collections import Counter
 
+from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
 from fetch_bluesky import JETSTREAM, WORD_RE, chunks, embed_kind, get_json, ssl_context
@@ -46,30 +47,43 @@ def tid_time_us(rkey):
     return n >> 10
 
 
-def tally_reposts(start_us, end_us, stop_us):
-    """Count reposts (up to stop_us) of posts created in [start_us, end_us)."""
+def tally_reposts(start_us, end_us, stop_us, max_reconnects=50):
+    """Count reposts (up to stop_us) of posts created in [start_us, end_us).
+
+    Long replays get dropped now and then, so reconnect from the last event seen.
+    """
     counts = Counter()
-    url = f"{JETSTREAM}?wantedCollections=app.bsky.feed.repost&cursor={start_us}"
-    n, last_report = 0, time.time()
-    with connect(url, ssl=ssl_context(), max_size=2**22, open_timeout=30) as ws:
-        while True:
-            ev = json.loads(ws.recv(timeout=60))
-            if ev.get("time_us", 0) >= stop_us:
-                break
-            c = ev.get("commit") or {}
-            if ev.get("kind") != "commit" or c.get("operation") != "create":
-                continue
-            uri = ((c.get("record") or {}).get("subject") or {}).get("uri", "")
-            if "/app.bsky.feed.post/" not in uri:
-                continue
-            created = tid_time_us(uri.rsplit("/", 1)[1])
-            if created is not None and start_us <= created < end_us:
-                counts[uri] += 1
-            n += 1
-            if time.time() - last_report > 60:
-                at = dt.datetime.fromtimestamp(ev["time_us"] / 1e6, dt.timezone.utc)
-                print(f"  {n:,} reposts read, stream at {at:%m-%d %H:%M} UTC", file=sys.stderr)
-                last_report = time.time()
+    cursor, n, last_report, reconnects = start_us, 0, time.time(), 0
+    while cursor < stop_us:
+        url = f"{JETSTREAM}?wantedCollections=app.bsky.feed.repost&cursor={cursor}"
+        try:
+            with connect(url, ssl=ssl_context(), max_size=2**22, open_timeout=30) as ws:
+                while cursor < stop_us:
+                    ev = json.loads(ws.recv(timeout=60))
+                    # Skip events already counted before a reconnect.
+                    if ev.get("time_us", 0) <= cursor and n:
+                        continue
+                    cursor = ev.get("time_us", cursor)
+                    c = ev.get("commit") or {}
+                    if ev.get("kind") != "commit" or c.get("operation") != "create":
+                        continue
+                    uri = ((c.get("record") or {}).get("subject") or {}).get("uri", "")
+                    if "/app.bsky.feed.post/" not in uri:
+                        continue
+                    created = tid_time_us(uri.rsplit("/", 1)[1])
+                    if created is not None and start_us <= created < end_us:
+                        counts[uri] += 1
+                    n += 1
+                    if time.time() - last_report > 60:
+                        at = dt.datetime.fromtimestamp(cursor / 1e6, dt.timezone.utc)
+                        print(f"  {n:,} reposts read, stream at {at:%m-%d %H:%M} UTC", file=sys.stderr)
+                        last_report = time.time()
+        except (ConnectionClosed, TimeoutError, OSError) as e:
+            reconnects += 1
+            if reconnects > max_reconnects:
+                raise
+            print(f"  connection dropped ({type(e).__name__}); reconnecting from cursor", file=sys.stderr)
+            time.sleep(2)
     print(f"{n:,} reposts read; {len(counts):,} window posts reposted", file=sys.stderr)
     return counts
 

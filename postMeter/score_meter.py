@@ -61,16 +61,31 @@ def segment_text(text):
     return [s for s in (p.strip() for p in SEGMENT_RE.split(clean(text))) if WORD_RE.search(s)]
 
 
-def foot_fit(stress, foot):
-    """Best fraction of known syllables matching a repeating foot, over all phase offsets."""
+def foot_matches(stress, foot, offset=0):
+    """(matches, known syllables) for a repeating foot starting at the given phase."""
     known = [(i, c) for i, c in enumerate(stress) if c != "?"]
-    if len(known) < 4:
+    return sum(c == foot[(i + offset) % len(foot)] for i, c in known), len(known)
+
+
+def anchored_fit(segments, foot):
+    """Fraction of syllables matching a foot that restarts at each phrase.
+
+    Anchoring at phrase starts is what separates iambic (uS) from trochaic (Su).
+    """
+    hits = total = 0
+    for seg in segments:
+        h, n = foot_matches(seg, foot)
+        hits, total = hits + h, total + n
+    return hits / total if total >= 4 else float("nan")
+
+
+def periodic_fit(stress, period):
+    """Best fit to any duple (period 2) or triple (period 3) beat, whatever its phase."""
+    foot = "S" + "u" * (period - 1)
+    fits = [foot_matches(stress, foot, k) for k in range(period)]
+    if fits[0][1] < 4:
         return float("nan")
-    best = 0.0
-    for offset in range(len(foot)):
-        hits = sum(c == foot[(i + offset) % len(foot)] for i, c in known)
-        best = max(best, hits / len(known))
-    return best
+    return max(h for h, _ in fits) / fits[0][1]
 
 
 def interval_regularity(stress):
@@ -128,14 +143,16 @@ def score(text):
                             if len(seg_lens) > 1 else float("nan")),
         "end_rhyme": int(has_rhyme),
     }
+    feats["fit_duple"] = periodic_fit(stress, 2)
+    feats["fit_triple"] = periodic_fit(stress, 3)
     for name, foot in FEET.items():
-        feats[f"fit_{name}"] = foot_fit(stress, foot)
+        feats[f"fit_{name}"] = anchored_fit(seg_stresses, foot)
     fits = {k: feats[f"fit_{k}"] for k in FEET}
     best = max(fits, key=lambda k: -1 if math.isnan(fits[k]) else fits[k])
     feats["best_meter"] = best if not math.isnan(fits[best]) else ""
     # Pentametron-style flag: some phrase is 10 syllables of near-iambic verse.
     feats["pentameter_line"] = int(any(
-        len(s) == 10 and "?" not in s and foot_fit(s, "uS") >= 0.8 for s in seg_stresses
+        len(s) == 10 and "?" not in s and anchored_fit([s], "uS") >= 0.8 for s in seg_stresses
     ))
     return feats
 

@@ -13,6 +13,7 @@ Usage:
 import argparse
 import csv
 import math
+from collections import Counter
 
 import numpy as np
 
@@ -58,12 +59,19 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("input")
     ap.add_argument("-o", "--output", help="also write per-post features here")
+    ap.add_argument("--max-per-author", type=int, default=3, help="drop accounts with more sampled posts than this")
     args = ap.parse_args()
 
     with open(args.input, newline="", encoding="utf-8") as f:
         rows = [{**r, **score(r["text"])} for r in csv.DictReader(f)]
     # Drop posts that are mostly words CMUdict doesn't know (slang, names, other languages).
     rows = [r for r in rows if r["n_syllables"] >= 6 and r["oov_rate"] <= 0.3 and r["age_hours"] != ""]
+    # Accounts appearing many times in a random sample are mostly bots (weather reports,
+    # link feeds) whose templated text and near-zero engagement swamp everything else.
+    per_author = Counter(r["did"] for r in rows)
+    bots = {d for d, n in per_author.items() if n > args.max_per_author}
+    rows = [r for r in rows if r["did"] not in bots]
+    print(f"dropped {len(bots)} high-volume accounts (> {args.max_per_author} posts in sample)")
 
     if args.output:
         with open(args.output, "w", newline="", encoding="utf-8") as f:

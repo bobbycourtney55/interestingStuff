@@ -29,7 +29,8 @@ you your he him his she her it its they them their who whom whose which what
 if then there here not no just like up out off over
 """.split())
 
-URL_RE = re.compile(r"https?://\S+|www\.\S+")
+# Bluesky shows links without a scheme ("youtube.com/watch?v=..."), so match bare domains too.
+URL_RE = re.compile(r"https?://\S+|www\.\S+|\b[\w-]+(?:\.[\w-]+)*\.[a-z]{2,}/\S*|\b[\w-]+\.(?:com|org|net|io|co|app|social|be)\b\S*")
 HANDLE_RE = re.compile(r"[@#]\w+")
 WORD_RE = re.compile(r"[a-zA-Z]+(?:'[a-zA-Z]+)?")
 # Line breaks and strong punctuation mark segment (phrase) boundaries.

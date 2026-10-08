@@ -1,0 +1,49 @@
+# Copy to config.yaml and edit. Secrets are NOT stored here: set
+# META_ACCESS_TOKEN (and optionally META_APP_SECRET) in the environment.
+
+meta:
+  api_version: v24.0            # pin; bump when Meta deprecates it
+  ad_account_id: "1234567890"   # with or without the act_ prefix
+
+bigquery:
+  project: my-gcp-project       # project that runs (and pays for) the query
+  location: US
+
+defaults:
+  default_country: us           # used when a row has no country column/value
+  default_phone_country_code: "1"  # prepended to national-format phone numbers
+  batch_size: 10000             # Meta's max per request
+
+audiences:
+  - name: "BQ - High value customers"
+    description: "Synced nightly from BigQuery (crm.customers, LTV >= 500)"
+    # Either audience_id (use an existing audience) or name + create_if_missing.
+    # audience_id: "23850000000000000"
+    create_if_missing: true
+    mode: replace               # add | replace | remove
+    sql_file: queries/high_value_customers.sql
+    params:
+      min_ltv: 500              # -> @min_ltv (int/float/str/bool inferred)
+    # Meta schema key -> BigQuery output column.
+    # Keys: EMAIL PHONE FN LN FI CT ST ZIP COUNTRY GEN DOBY DOBM DOBD
+    #       EXTERN_ID MADID, plus DOB (a DATE column expanded to DOBY/DOBM/DOBD).
+    columns:
+      EMAIL: email
+      PHONE: phone
+      FN: first_name
+      LN: last_name
+      CT: city
+      ST: state
+      ZIP: postal_code
+      COUNTRY: country_code
+      DOB: birth_date
+      EXTERN_ID: customer_id
+
+  - name: "BQ - Newsletter subscribers"
+    create_if_missing: true
+    mode: add
+    sql: |
+      SELECT email FROM `my-gcp-project.marketing.newsletter_subscribers`
+      WHERE subscribed_at >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)
+    columns:
+      EMAIL: email

@@ -3,6 +3,7 @@ import sys
 import numpy as np, pandas as pd, matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from scipy.stats import spearmanr
 
 D, OUT = sys.argv[1], sys.argv[2]
 df = pd.read_csv(f"{D}/nominate_merged.csv", index_col=0)
@@ -22,6 +23,6 @@ ax.grid(color="#e6e5e1", lw=0.8); ax.set_axisbelow(True)
 for s in ["top", "right"]: ax.spines[s].set_visible(False)
 for s in ["left", "bottom"]: ax.spines[s].set_color("#bdbcb7")
 ax.tick_params(colors="#5c5c58", labelsize=8.5)
-ax.set_title("Voting record vs. donor network, 127 Democratic members of Congress\n"
-             "Spearman ρ = 0.34 · labeled: 6 largest outliers each way", fontsize=11, loc="left", color="#1d1d1b")
+ax.set_title(f"Voting record vs. donor network, {len(df)} Democratic members of Congress\n"
+             f"Spearman ρ = {spearmanr(df.p_nom, df.p_don)[0]:.2f} · labeled: 6 largest outliers each way", fontsize=11, loc="left", color="#1d1d1b")
 fig.tight_layout(); fig.savefig(OUT, facecolor="white")

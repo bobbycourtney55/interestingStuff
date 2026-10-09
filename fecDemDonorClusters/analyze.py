@@ -35,7 +35,7 @@ def similarity(X):
     idf = np.log(X.shape[0] / deg)                      # down-weight donors who give to everyone
     W = X @ sp.diags(idf)
     nrm = np.sqrt(np.asarray(W.multiply(W).sum(1)).ravel())
-    W = sp.diags(1 / nrm) @ W
+    W = sp.diags(1 / np.where(nrm > 0, nrm, 1)) @ W   # candidates with no shared donors get a zero row
     S = (W @ W.T).toarray()
     np.fill_diagonal(S, 0)
     return S
